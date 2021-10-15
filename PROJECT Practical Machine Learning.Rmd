@@ -1,0 +1,408 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Sachin Sharma"
+date: "10/14/2021"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Importing Libraries
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(tinytex)
+library(naniar)
+library(corrgram)
+library(corrplot)
+library(caret)
+library(randomForest)
+library(e1071)
+library(gbm)
+library(doParallel)
+library(survival)
+library(splines)
+
+
+```
+
+<h1 style="color:red" > Background</h1>
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)."
+
+ <h1 style="color:red" >Data</h1>
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. The information has been generously provided for use use in this cousera course by the authors, Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. They have allowed the use of their paper “Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany :  ACM SIGCHI, 2013.
+
+The training data for this project is available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data for this project is available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+<h1 style="color:red" >Steps Followed </h1>
+
+
+
+<h3 style="color:blue" >Data Wrangling</h3>
+
+
+
+<h4 style="color:blue" > Removing NA values if any. </h3>
+<h4 style="color:blue" > Removing columns ( which have no or less data ) </h3> 
+
+
+<h3 style="color:blue" > Visualization of data with ggplot.</h3>
+
+<h3 style="color:blue" >Splitting data into training and test set for cross validation </h3>
+
+<h3 style="color:blue" >Preparing models and test them on training data and test data.</h3>
+
+<h3 style="color:blue" >Fine tune models using reverse engineering with different variables</h3>
+
+
+
+
+
+# Importing data 
+
+```{r}
+
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
+head(train)
+
+```
+
+
+
+## Checking the structure of the data 
+
+```{r}
+
+str(train)
+
+
+```
+
+
+
+# Checking the missing values in the data with the help of following methods : 
+
+\textcolor{red}{\Large METHOD : 1 }
+
+```{r}
+sum(is.na(train))
+```
+
+
+
+\textcolor{red}{\Large METHOD : 2 }
+
+```{r}
+lapply(train, function(x)sum(is.na(x)))
+```
+
+\textcolor{red}{\Large METHOD : 3 }
+
+# To visualise the data , we will break the data in 8 equal data sets, which are as follows : 
+
+```{r}
+
+ncol(train)
+
+train_1 <- subset(train, select = c(1:20))
+
+train_2 <-subset(train, select = c(21:40))
+
+train_3 <- subset(train, select = c(41:60))
+
+train_4 <- subset(train, select = c(61:80))
+
+train_5 <- subset(train, select = c(81:100))
+train_6 <- subset(train, select = c(101:120))
+train_7 <- subset(train, select = c(121:140))
+train_8 <- subset(train, select = c(141:160))
+
+
+
+
+
+```
+
+
+
+
+
+
+```{r}
+
+vis_miss(train_1)
+
+sapply(train_1, function(x)sum(is.na(x)))
+
+# need to drop max_pitch_belt , max_roll_belt
+
+```
+
+
+
+
+
+```{r}
+
+vis_miss(train_2)
+
+```
+
+
+
+
+```{r}
+
+vis_miss(train_3)
+
+```
+
+
+
+
+```{r}
+vis_miss(train_4)
+
+```
+
+
+
+
+
+```{r}
+vis_miss(train_5)
+
+
+```
+
+
+
+
+```{r}
+vis_miss(train_6)
+
+```
+
+
+
+
+```{r}
+vis_miss(train_7)
+
+
+```
+
+
+
+
+```{r}
+vis_miss(train_8)
+
+```
+
+
+
+
+# With the help of above plots, we can see that there are columns which have more than 95% missing values   
+
+
+
+```{r}
+train <- train[, 6:dim(train)[2]]
+
+col_limit <- dim(train)[1] * 0.95
+
+
+column_not_blank <- !apply(train, 2, function(x) sum(is.na(x)) > col_limit  || sum(x=="") > col_limit)
+
+train <- train[, column_not_blank]
+
+blank_columns <- nearZeroVar(train, saveMetrics = TRUE)
+
+train <- train[, blank_columns$nzv==FALSE]
+
+train$classe = factor(train$classe)
+
+```
+# Partition rows into training and crossvalidation
+
+```{r}
+training <- createDataPartition(train$classe, p = 0.6)[[1]]
+cross_val <- train[-training,]
+train <- train[ training,]
+training <- createDataPartition(cross_val$classe, p = 0.75)[[1]]
+crossv_test <- cross_val[ -training,]
+cross_val <- cross_val[training,]
+
+
+test <- test[, 6:dim(test)[2]]
+test <- test[, column_not_blank]
+test$classe <- NA
+test <- test[, blank_columns$nzv==FALSE]
+
+
+```
+
+# Now we will train three different models :
+
+# Model - I 
+
+```{r}
+model_1 <- train(classe ~ ., data=train, method="rf")
+
+predict_1 <- predict(model_1, cross_val)
+
+```
+
+
+# Making confusion matrices
+
+```{r}
+
+
+confusionMatrix(predict_1, cross_val$classe)
+
+```
+
+
+
+
+# Model - 2
+
+
+```{r}
+#model_2 <- train(classe ~ ., data=train, method="lda")
+
+#predict_2 <- predict(model_2, cross_val)
+
+```
+
+
+# Making confusion matrices
+
+```{r}
+
+
+#confusionMatrix(predict_2, cross_val$classe)
+
+```
+
+
+
+# Model - 3
+
+
+```{r}
+
+#model_3 <- train(classe ~ ., data=train, method="lda")
+
+
+
+
+#predict_3 <- predict(model_3, cross_val)
+
+
+```
+
+
+# Making confusion matrices
+
+```{r}
+
+
+#confusionMatrix(predict_3, cross_val$classe)
+
+```
+
+
+```{r}
+
+#out-of-sample error
+predict_1 <- predict(model_1, crossv_test)
+
+accuracy <- sum(predict_1 == crossv_test$classe) / length(predict_1)
+
+```
+
+
+# Based on results, the Random Forest prediction was far better than either the GBM or lsa models. The RF model will be used as the sole prediction model. The confusion matrix created gives an accuracy of 99.6%. This is excellent.
+
+# As a double check the out of sample error was calculated. This model achieved 99.7449 % accuracy on the validation set.
+
+<h2 style="color:blue" > Lets do fine tuning to by visualizing few top variables in the data frame </h2>
+
+Assess Number of relevant variables
+
+```{r}
+
+important_var <- train(classe ~ ., data = train, method = "rf")
+important_var_up <- varImp(important_var)
+
+# Lets check the top 35 variables and plot them 
+
+plot(important_var_up, main = " Most important top 35 Variables", top = 35)
+
+```
+
+
+
+
+# Now plotting most important 25 variables 
+
+```{r}
+
+plot(important_var_up, main = "Most Important Top 25 Variables", top = 25)
+
+```
+
+<h1 style = "color:red" >Conclusion</h1>
+
+
+<h3 style="color:blue" >Results by using Random Forest method was excellent.</h3>
+
+<h3 style="color:blue" >The Confusion Matrix achieved 99.6% accuracy. The Out of Sample Error achieved 99.7449 %.</h3>
+
+<h3 style="color:blue" >We can use this model for the final calculations.</h3>
+
+<h1 style="color:red" >Why RANDOM FOREST ? </h1>
+
+<h3 style="colour:blue" > Random forests are suitable when to handling a large number of inputs, especially when the interactions between variables are unknown.</h3>
+
+<h3 style="colour:blue" >Random forest’s built in cross-validation component that gives an unbiased estimate of the forest’s out-of-sample (or bag) (OOB) error rate.</h3>
+
+<h3 style="colour:blue" >A Random forest can handle unscaled variables and categorical variables. This is more forgiving with the cleaning of the data.</h3>
+
+
+
+# Let's submit the report using COURSERA provided code
+
+```{r}
+pml_write_files = function(x){
+n = length(x)
+for(i in 1:n){
+filename = paste0("problem_id_",i,".txt")
+write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+}
+}
+x <- test
+
+answers <- predict(model_1, newdata=x)
+
+```
+answers
